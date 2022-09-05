@@ -8,9 +8,9 @@ RUN wget --output-document=/tmp/maven.zip https://dlcdn.apache.org/maven/maven-3
   && mv /tmp/apache-maven-3.8.6/* /opt/maven/ \
   && rm -Rf /tmp/apache-maven-3.8.6/
 
-RUN wget --output-document=/tmp/icap-server.zip https://github.com/claudineyns/http-server/archive/refs/heads/master.zip \
+RUN wget --output-document=/tmp/http-server.zip https://github.com/claudineyns/http-server/archive/refs/heads/master.zip \
   && unzip /tmp/http-server.zip -d /tmp/ \
-  && mv /tmp/http-server-master/ /tmp/source/ \
+  && mv /tmp/http-server-main/ /tmp/source/ \
   && cd /tmp/source && /opt/maven/bin/mvn install \
   && mv /tmp/source/target/*-shaded.jar /tmp/runner.jar
 
