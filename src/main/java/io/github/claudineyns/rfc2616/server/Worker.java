@@ -1,4 +1,4 @@
-package net.example.rfc2616.server;
+package io.github.claudineyns.rfc2616.server;
 
 import java.io.IOException;
 import java.net.ServerSocket;
