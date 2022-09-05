@@ -1,4 +1,4 @@
-package io.github.claudineyns.rfc2616.server.test;
+package io.github.net.rfc2616.server.test;
 
 import java.io.IOException;
 import java.io.InputStream;
@@ -18,7 +18,7 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.TestInstance;
 import org.junit.jupiter.api.TestInstance.Lifecycle;
 
-import io.github.claudineyns.rfc2616.server.Worker;
+import io.github.net.rfc2616.server.Worker;
 
 @TestInstance(Lifecycle.PER_CLASS)
 public class TestCase {
