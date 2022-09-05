@@ -10,6 +10,24 @@
   <properties>
     <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
   </properties>
+  
+  <developers>
+    <developer>
+      <id>claudineyns</id>
+      <name>Claudiney Nascimento</name>
+      <email>contato@claudiney.info</email>
+      <url>https://github.com/claudineyns/</url>
+    </developer>
+  </developers>
+  
+  <url>https://github.com/claudineyns/http-server.git</url>
+  
+  <licenses>
+    <license>
+      <name>MIT License</name>
+      <url>https://raw.githubusercontent.com/claudineyns/http-server/main/LICENSE</url>
+    </license>
+  </licenses>
 
   <dependencies>
 
