@@ -7,7 +7,6 @@ import java.net.Inet4Address;
 import java.net.InetAddress;
 import java.net.InetSocketAddress;
 import java.net.Socket;
-import java.net.URLEncoder;
 import java.nio.charset.StandardCharsets;
 import java.util.concurrent.CompletableFuture;
 
@@ -39,14 +38,13 @@ public class TestCase {
 		final InetAddress address = Inet4Address.getByName("localhost");
 		final InetSocketAddress socketAddress = new InetSocketAddress(address, 8080);
 
-		final int connect_timeout = 2000;
+		final int connect_timeout = 5000;
 
 		logger.info("Connecting...");
 		final Socket socket = new Socket();
+		socket.setSoTimeout(500);
 		socket.connect(socketAddress, connect_timeout);
-		
 		logger.info("Connected.");
-		Thread.sleep(250L);
 		
 		final OutputStream out = socket.getOutputStream();
 		final InputStream in = socket.getInputStream();
@@ -54,13 +52,8 @@ public class TestCase {
 		out.write(content.getBytes(StandardCharsets.US_ASCII) );
 		out.flush();
 		
-		final StringBuilder sb = new StringBuilder("");
-		
-		int reader = -1;
 		try {
-			while((reader = in.read()) != -1) {
-				sb.append((char)reader);
-			}
+			while(in.read() != -1);
 		} catch(IOException e) {}
 
 		try { socket.close(); } catch(IOException e) {}
@@ -69,8 +62,8 @@ public class TestCase {
 	}
 	
 	@Test
-	public void getRootAsSuccess() throws Exception {
-		logger.info("# getRootAsSuccess (START)");
+	public void getRootSuccessfull() throws Exception {
+		logger.info("# getRootSuccessfull (START)");
 		
 		final StringBuilder request = new StringBuilder("");
 		request.append("GET / HTTP/1.1\r\n");
@@ -78,41 +71,38 @@ public class TestCase {
 
 		execute(request.toString());
 		
-		logger.info("# getRootAsSuccess (END)");
+		logger.info("# getRootSuccessfull (END)");
 	}
 	
 	@Test
-	public void getSvgAsSuccess() throws Exception {
-		logger.info("# getSvgAsSuccess (START)");
+	public void getLivenessSuccessful() throws Exception {
+		logger.info("# getLivenessSuccessful (START)");
 		
 		final StringBuilder request = new StringBuilder("");
-		final String url = URLEncoder.encode("https://ob-public-files.s3.amazonaws.com/simbolo_open_finance.HTML.svg", "UTF-8");
-
-		request.append("GET /svgToPng?url=").append(url).append(" HTTP/1.1\r\n");
+		request.append("GET /live HTTP/1.1\r\n");
 		request.append("\r\n");
 
 		execute(request.toString());
 		
-		logger.info("# getSvgAsSuccess (END)");
+		logger.info("# getLivenessSuccessful (END)");
 	}
 	
 	@Test
-	public void getSvgAsFailure() throws Exception {
-		logger.info("# getSvgAsFailure (START)");
+	public void getReadinessSuccessful() throws Exception {
+		logger.info("# getReadinessSuccessful (START)");
 		
 		final StringBuilder request = new StringBuilder("");
-
-		request.append("GET /svgToPng HTTP/1.1\r\n");
+		request.append("GET /ready HTTP/1.1\r\n");
 		request.append("\r\n");
 
 		execute(request.toString());
 		
-		logger.info("# getSvgAsFailure (END)");
+		logger.info("# getReadinessSuccessful (END)");
 	}
 	
 	@Test
-	public void getInvalidAsFailure() throws Exception {
-		logger.info("# getInvalidAsFailure (START)");
+	public void getInvalidSucessful() throws Exception {
+		logger.info("# getInvalidSucessful (START)");
 		
 		final StringBuilder request = new StringBuilder("");
 
@@ -121,26 +111,26 @@ public class TestCase {
 
 		execute(request.toString());
 		
-		logger.info("# getInvalidAsFailure (END)");
+		logger.info("# getInvalidSucessful (END)");
 	}
 
 	@Test
-	public void postRootAsSuccess() throws Exception {
-		logger.info("# postRootAsSuccess (START)");
+	public void postRootSuccessful() throws Exception {
+		logger.info("# postRootSuccessful (START)");
 		
 		final String content = "Test Post request";
 		final byte[] raw = content.getBytes(StandardCharsets.US_ASCII);
 		
 		final StringBuilder request = new StringBuilder("");
 		request.append("POST / HTTP/1.1\r\n");
-		request.append("Content-Type: text/plain\r\n" );
+		request.append("Content-Type: text/plain;\r\n charset=UTF8\r\n" );
 		request.append("Content-Length: ").append(raw.length).append("\r\n");
 		request.append("\r\n");
 		request.append(content);
 
 		execute(request.toString());
 		
-		logger.info("# postRootAsSuccess (END)");
+		logger.info("# postRootSuccessful (END)");
 	}
 
 	@AfterAll

@@ -1,15 +1,11 @@
 package io.github.net.rfc2616.server;
 
 import java.io.ByteArrayOutputStream;
-import java.io.FileOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
-import java.net.Inet4Address;
 import java.net.Socket;
-import java.net.SocketException;
 import java.net.URL;
-import java.net.URLDecoder;
 import java.nio.charset.StandardCharsets;
 import java.time.ZoneId;
 import java.time.ZonedDateTime;
@@ -20,38 +16,23 @@ import java.util.LinkedList;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
-import java.util.Properties;
 import java.util.UUID;
-import java.util.logging.Level;
-import java.util.logging.Logger;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
-import org.apache.batik.transcoder.TranscoderException;
-import org.apache.batik.transcoder.TranscoderInput;
-import org.apache.batik.transcoder.TranscoderOutput;
-import org.apache.batik.transcoder.image.PNGTranscoder;
-
+import io.github.net.rfc2616.utilities.AppProperties;
 import io.github.net.rfc2616.utilities.LogService;
 
-@SuppressWarnings("unused")
-public class ClientHandler implements Runnable {
+public class ClientRequestHandler implements Runnable {
 	private final LogService logger = LogService.getInstance("HTTP-SERVER");
 
 	private Socket client;
 
 	private InputStream in;
 	private OutputStream out;
-	private String serverName;
 
-	public ClientHandler(Socket c) {
+	public ClientRequestHandler(Socket c) {
 		this.client = c;
-		try {
-			serverName = Inet4Address.getLocalHost().getHostName();
-		} catch (IOException e) {
-			logger.warning(e.getMessage());
-			serverName = "localhost";
-		}
 	}
 
 	@Override
@@ -97,7 +78,6 @@ public class ClientHandler implements Runnable {
 	}
 
 	private static final String CRLF = "\r\n";
-	private static final String CRLF_RE = "\\r\\n";
 	private static final byte[] CRLF_RAW = CRLF.getBytes(StandardCharsets.US_ASCII);
 
 	private HttpMethod requestMethod = null;
@@ -190,8 +170,9 @@ public class ClientHandler implements Runnable {
 		final String path = this.requestUrl.getPath();
 
 		switch (path) {
-		case "/svgToPng":
-			return this.fetchSvgToPng();
+		case "/live":
+		case "/ready":
+			return this.liveness();
 		case "/":
 			return this.sendBasicBody();
 		default:
@@ -230,7 +211,9 @@ public class ClientHandler implements Runnable {
 	}
 
 	private byte analyseRequestHeader(byte[] raw) throws Exception {
-		final String data = new String(raw, StandardCharsets.US_ASCII);
+		final String CRLF_RE = "\\r\\n";
+
+		final String data = new String(raw, StandardCharsets.US_ASCII).replaceAll("\\r\\n[\\s\t]", "\u0000\u0000\u0000");
 		final String[] entries = data.split(CRLF_RE);
 
 		if (entries.length == 0) {
@@ -238,29 +221,30 @@ public class ClientHandler implements Runnable {
 		}
 
 		final String methodLine = entries[0];
-		final String methodLine2 = methodLine.toUpperCase();
 
-		final String method = methodLine2.contains(" ") ? methodLine2.substring(0, methodLine2.indexOf(" "))
-				: methodLine2;
-
-		final HttpMethod httpMethod = HttpMethod.from(method);
-
-		if (httpMethod == null) {
-			return sendMethodNotAllowed();
-		}
-
-		if (!methodLine2.toUpperCase().startsWith(httpMethod.name() + " ")) {
-			return sendBadRequest("Invalid HTTP Method Sintax");
-		}
-
-		String[] methodContent = methodLine.split("\\s");
-
+		final String[] methodContent = methodLine.split("\\s");
 		if (methodContent.length != 3) {
 			return sendBadRequest("Invalid HTTP Method Sintax");
 		}
 
-		String uri = methodContent[1];
+		logger.info(methodLine);
 
+		final String methodLineLower = methodLine.toUpperCase();
+
+		final String method = methodLineLower.contains(" ")
+				? methodLineLower.substring(0, methodLineLower.indexOf(" "))
+				: methodLineLower;
+
+		final HttpMethod httpMethod = HttpMethod.from(method);
+		if (httpMethod == null) {
+			return sendMethodNotAllowed();
+		}
+
+		if (!methodLineLower.toUpperCase().startsWith(httpMethod.name() + " ")) {
+			return sendBadRequest("Invalid HTTP Method Sintax");
+		}
+
+		final String uri = methodContent[1];
 		if (!validateURI(uri)) {
 			return sendBadRequest("Invalid HTTP URI");
 		}
@@ -268,10 +252,8 @@ public class ClientHandler implements Runnable {
 		httpRequestHeaders.put(null, Collections.singletonList(methodLine));
 		for (int i = 1; i < entries.length; ++i) {
 			final String entry = entries[i];
-
 			final String header = entry.substring(0, entry.indexOf(':')).toLowerCase();
-			final String value = entry.substring(entry.indexOf(':') + 1).trim().replaceAll("\\r\\n$", "");
-
+			final String value = entry.substring(entry.indexOf(':') + 1).trim().replaceAll("[\u0000]{3}", "\r\n ");
 			httpRequestHeaders.putIfAbsent(header, new LinkedList<>());
 			httpRequestHeaders.get(header).add(value);
 		}
@@ -292,6 +274,7 @@ public class ClientHandler implements Runnable {
 	}
 
 	private byte sendStatusLine(final String statusLine) throws IOException {
+		logger.info(statusLine);
 		out.write((statusLine + CRLF).getBytes(StandardCharsets.US_ASCII));
 
 		return 0;
@@ -310,7 +293,7 @@ public class ClientHandler implements Runnable {
 		final String osArchitecture = System.getProperty("os.arch");
 		final String osVersion = System.getProperty("os.version");
 
-		out.write(("Server: " + serverName + CRLF).getBytes(StandardCharsets.US_ASCII));
+		out.write(("Server: " + AppProperties.getHostName() + CRLF).getBytes(StandardCharsets.US_ASCII));
 		out.write(String.format("X-Powered-By: Java/%s (%s; %s %s; %s)%s",
 				javaVersion,
 				javaVendor,
@@ -336,9 +319,13 @@ public class ClientHandler implements Runnable {
 		return 0;
 	}
 
-	private byte sendEmptyBody() throws IOException {
-		out.write(("Content-Length: 0" + CRLF).getBytes(StandardCharsets.US_ASCII));
-		out.write(CRLF_RAW);
+	private byte liveness() throws IOException {
+		final String html = "{\"status\":\"UP\",\"checks\":[]}";
+		final byte[] raw = html.getBytes(StandardCharsets.UTF_8);
+
+		this.httpResponseHeaders.put("Content-Type", Collections.singletonList("application/json"));
+		this.httpResponseHeaders.put("Content-Length", Collections.singletonList(Integer.toString(raw.length)));
+		this.httpResponseBody.write(raw);
 
 		return 0;
 	}
@@ -464,44 +451,6 @@ public class ClientHandler implements Runnable {
 		this.mountTerminateConnection();
 
 		return this.mountCustomBody();
-	}
-
-	private byte fetchSvgToPng() throws IOException {
-		final String query = this.requestUrl.getQuery();
-		final String[] queryData = query != null ? query.split("&") : new String[] {};
-
-		final Map<String, String> properties = new LinkedHashMap<>();
-		for (final String q : queryData) {
-			final String[] p = q.split("=");
-			properties.put(p[0], URLDecoder.decode(p[1], "UTF-8"));
-		}
-
-		final String queryUrl = properties.get("url");
-		if (queryUrl == null) {
-			return Q_BAD_REQUEST;
-		}
-
-		final URL svgUrl = new URL(queryUrl);
-
-		final TranscoderInput input_svg_image = new TranscoderInput(svgUrl.openConnection().getInputStream());
-		final TranscoderOutput output_png_image = new TranscoderOutput(this.httpResponseBody);
-		final PNGTranscoder my_converter = new PNGTranscoder();
-
-		try {
-			my_converter.transcode(input_svg_image, output_png_image);
-		} catch (TranscoderException e) {
-			logger.error("Could not fetch image", e);
-			throw new IOException(e);
-		}
-
-		this.httpResponseBody.flush();
-		this.httpResponseBody.close();
-
-		this.httpResponseHeaders.put("Content-Type", Collections.singletonList("image/png"));
-		this.httpResponseHeaders.put("Content-Length",
-				Collections.singletonList(Integer.toString(this.httpResponseBody.size())));
-
-		return 0;
 	}
 
 }

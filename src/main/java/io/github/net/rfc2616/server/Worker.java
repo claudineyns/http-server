@@ -5,6 +5,7 @@ import java.net.ServerSocket;
 import java.net.Socket;
 import java.util.concurrent.CompletableFuture;
 
+import io.github.net.rfc2616.utilities.AppProperties;
 import io.github.net.rfc2616.utilities.LogService;
 
 public class Worker {
@@ -22,8 +23,6 @@ public class Worker {
 	
 	private ServerSocket server;
 	
-	private final int PORT = 8080;
-	
 	private void stop() {
 		try {
 			if(!server.isClosed()) {
@@ -35,10 +34,11 @@ public class Worker {
 
 	private void start() throws IOException {
 		Runtime.getRuntime().addShutdownHook(new Thread(()-> stop()));
-		
-		this.server = new ServerSocket(PORT);
-		logger.info("Listening on port 8080");
-		
+
+		final int port = AppProperties.getPort();
+		this.server = new ServerSocket(port);
+		logger.info("Listening on port {}", port);
+
 		while(true) {
 			Socket client = null;
 			try {
@@ -48,8 +48,8 @@ public class Worker {
 				break;
 			}
 
-			CompletableFuture.runAsync(new ClientHandler(client));
+			CompletableFuture.runAsync(new ClientRequestHandler(client));
 		}
 	}
-	
+
 }

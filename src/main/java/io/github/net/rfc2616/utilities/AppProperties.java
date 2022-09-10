@@ -12,7 +12,11 @@ public final class AppProperties {
 	private static final String DEFAULT_PORT = "8080";
 
 	public static int getPort() {
-		final String port = nullValue(System.getenv(Constants.ENV_PORT), DEFAULT_PORT);
+		final String port = nullValue(
+				System.getProperty(Constants.PROPERTY_PORT),
+				System.getenv(Constants.ENV_PORT),
+				DEFAULT_PORT
+			);
 		return Integer.parseInt(port);
 	}
 
@@ -23,14 +27,18 @@ public final class AppProperties {
 		try {
 			hostname = Inet4Address.getLocalHost().getHostName();
 		} catch(UnknownHostException e) {
-			hostname = Thread.currentThread().getName();
+			hostname = "localhost";
 		}
-		
+
 		DEFAULT_HOST_NAME = hostname;
 	}
 
 	public static String getHostName() {
-		return nullValue(System.getenv(Constants.ENV_HOSTNAME), DEFAULT_HOST_NAME);
+		return nullValue(
+				System.getProperty(Constants.PROPERTY_HOSTNAME),
+				System.getenv(Constants.ENV_HOSTNAME),
+				DEFAULT_HOST_NAME
+			);
 	}
 
 }
