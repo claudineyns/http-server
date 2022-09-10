@@ -10,7 +10,6 @@ import java.net.Socket;
 import java.net.URLEncoder;
 import java.nio.charset.StandardCharsets;
 import java.util.concurrent.CompletableFuture;
-import java.util.logging.Logger;
 
 import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.BeforeAll;
@@ -19,19 +18,20 @@ import org.junit.jupiter.api.TestInstance;
 import org.junit.jupiter.api.TestInstance.Lifecycle;
 
 import io.github.net.rfc2616.server.Worker;
+import io.github.net.rfc2616.utilities.LogService;
 
 @TestInstance(Lifecycle.PER_CLASS)
 public class TestCase {
-	final Logger logger = Logger.getLogger(getClass().getCanonicalName());
+	final LogService logger = LogService.getInstance(TestCase.class.getSimpleName());
 
 	@BeforeAll
 	public void startup() throws Exception {
-		logger.info("[TEST] Getting server up...");
+		logger.info("Getting server up...");
 		CompletableFuture.runAsync(()-> {
 			try { Worker.main(new String[] {}); } catch(IOException e) {} 
 		});
 		Thread.sleep(250L);
-		logger.info("[TEST] Server is up");
+		logger.info("Server is up");
 	}
 	
 	private void execute(final String content) throws Exception {
@@ -41,11 +41,11 @@ public class TestCase {
 
 		final int connect_timeout = 2000;
 
-		logger.info("[TEST] Connecting...");
+		logger.info("Connecting...");
 		final Socket socket = new Socket();
 		socket.connect(socketAddress, connect_timeout);
 		
-		logger.info("[TEST] Connected.");
+		logger.info("Connected.");
 		Thread.sleep(250L);
 		
 		final OutputStream out = socket.getOutputStream();
@@ -65,7 +65,7 @@ public class TestCase {
 
 		try { socket.close(); } catch(IOException e) {}
 
-		logger.info("[TEST] Disconnected.");
+		logger.info("Disconnected.");
 	}
 	
 	@Test

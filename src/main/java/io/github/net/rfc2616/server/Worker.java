@@ -4,7 +4,8 @@ import java.io.IOException;
 import java.net.ServerSocket;
 import java.net.Socket;
 import java.util.concurrent.CompletableFuture;
-import java.util.logging.Logger;
+
+import io.github.net.rfc2616.utilities.LogService;
 
 public class Worker {
 	static final Worker worker = new Worker();
@@ -17,7 +18,7 @@ public class Worker {
 		worker.stop();
 	}
 	
-	private final Logger logger = Logger.getGlobal();
+	private final LogService logger = LogService.getInstance("HTTP-SERVER");
 	
 	private ServerSocket server;
 	
@@ -27,7 +28,7 @@ public class Worker {
 		try {
 			if(!server.isClosed()) {
 				server.close();
-				logger.info("[HTTP-SERVER] Service terminated.");
+				logger.info("Service terminated.");
 			}
 		} catch(IOException e) {}
 	}
@@ -36,13 +37,13 @@ public class Worker {
 		Runtime.getRuntime().addShutdownHook(new Thread(()-> stop()));
 		
 		this.server = new ServerSocket(PORT);
-		logger.info("[HTTP-SERVER] Listening on port 8080");
+		logger.info("Listening on port 8080");
 		
 		while(true) {
 			Socket client = null;
 			try {
 				client = server.accept();
-				Logger.getGlobal().info("[HTTP-SERVER] Connection received!");
+				logger.info("Connection received!");
 			} catch(IOException e) {
 				break;
 			}

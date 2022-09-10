@@ -32,9 +32,11 @@ import org.apache.batik.transcoder.TranscoderInput;
 import org.apache.batik.transcoder.TranscoderOutput;
 import org.apache.batik.transcoder.image.PNGTranscoder;
 
+import io.github.net.rfc2616.utilities.LogService;
+
 @SuppressWarnings("unused")
 public class ClientHandler implements Runnable {
-	private final Logger logger = Logger.getGlobal();
+	private final LogService logger = LogService.getInstance("HTTP-SERVER");
 
 	private Socket client;
 
@@ -47,7 +49,7 @@ public class ClientHandler implements Runnable {
 		try {
 			serverName = Inet4Address.getLocalHost().getHostName();
 		} catch (IOException e) {
-			logger.warning("\n### SERVER ### [Startup] [WARNING]\n" + e.getMessage());
+			logger.warning(e.getMessage());
 			serverName = "localhost";
 		}
 	}
@@ -64,16 +66,16 @@ public class ClientHandler implements Runnable {
 			this.out.close();
 			this.in.close();
 		} catch (IOException e) {
-			logger.warning("\n### SERVER ### [Cleanup] [WARNING] General error:\n" + e.getMessage());
+			logger.warning("Request handling error: {}", e.getMessage());
 		}
 
 		try {
 			client.close();
 		} catch (IOException e) {
-			logger.warning("\n### SERVER ### [Cleanup] [WARNING] General error:\n" + e.getMessage());
+			logger.warning("Client connection closing error: {}", e.getMessage());
 		}
 
-		logger.info("\n### SERVER ### [Cleanup] [INFO] Client request completed.\n");
+		logger.info("Client request completed");
 
 	}
 
@@ -112,7 +114,7 @@ public class ClientHandler implements Runnable {
 			}
 			out.flush();
 		} catch (Exception e) {
-			logger.severe(e.getMessage());
+			logger.error(e.getMessage());
 		}
 	}
 
@@ -488,7 +490,7 @@ public class ClientHandler implements Runnable {
 		try {
 			my_converter.transcode(input_svg_image, output_png_image);
 		} catch (TranscoderException e) {
-			logger.log(Level.SEVERE, "Could not fetch image", e);
+			logger.error("Could not fetch image", e);
 			throw new IOException(e);
 		}
 

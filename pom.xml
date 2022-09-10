@@ -3,7 +3,7 @@
   <modelVersion>4.0.0</modelVersion>
   <groupId>net.rfc2616</groupId>
   <artifactId>http-server</artifactId>
-  <version>0.0.1-SNAPSHOT</version>
+  <version>0.0.2-SNAPSHOT</version>
 
   <name>http-server</name>
   <description>Very basic http server implementation based on RFC2616</description>
