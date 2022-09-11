@@ -42,7 +42,7 @@ public class TestCase {
 
 		logger.info("Connecting...");
 		final Socket socket = new Socket();
-		socket.setSoTimeout(500);
+		socket.setSoTimeout(10000);
 		socket.connect(socketAddress, connect_timeout);
 		logger.info("Connected.");
 		
@@ -71,7 +71,7 @@ public class TestCase {
 
 		execute(request.toString());
 		
-		logger.info("# getRootSuccessfull (END)");
+		logger.info("# getRootSuccessfull (END)\n");
 	}
 	
 	@Test
@@ -84,7 +84,7 @@ public class TestCase {
 
 		execute(request.toString());
 		
-		logger.info("# getLivenessSuccessful (END)");
+		logger.info("# getLivenessSuccessful (END)\n");
 	}
 	
 	@Test
@@ -97,12 +97,25 @@ public class TestCase {
 
 		execute(request.toString());
 		
-		logger.info("# getReadinessSuccessful (END)");
+		logger.info("# getReadinessSuccessful (END)\n");
 	}
 	
 	@Test
-	public void getInvalidSucessful() throws Exception {
-		logger.info("# getInvalidSucessful (START)");
+	public void getSpecSuccessful() throws Exception {
+		logger.info("# getSpecSuccessful (START)");
+		
+		final StringBuilder request = new StringBuilder("");
+		request.append("GET /spec HTTP/1.1\r\n");
+		request.append("\r\n");
+
+		execute(request.toString());
+		
+		logger.info("# getSpecSuccessful (END)\n");
+	}
+	
+	@Test
+	public void getInvalidPathSucessful() throws Exception {
+		logger.info("# getInvalidPathSucessful (START)");
 		
 		final StringBuilder request = new StringBuilder("");
 
@@ -111,7 +124,7 @@ public class TestCase {
 
 		execute(request.toString());
 		
-		logger.info("# getInvalidSucessful (END)");
+		logger.info("# getInvalidPathSucessful (END)\n");
 	}
 
 	@Test
@@ -130,7 +143,69 @@ public class TestCase {
 
 		execute(request.toString());
 		
-		logger.info("# postRootSuccessful (END)");
+		logger.info("# postRootSuccessful (END)\n");
+	}
+
+	static void concatChunkData(final StringBuilder sb, final String message) {
+		final byte[] raw = message.getBytes(StandardCharsets.US_ASCII);
+		sb.append(Integer.toString(raw.length, 16));
+		sb.append("\r\n");
+		sb.append(message);
+		sb.append("\r\n");
+	}
+
+	@Test
+	public void postEchoSuccessful() throws Exception {
+		logger.info("# postEchoSuccessful (START)");
+
+		final StringBuilder sb = new StringBuilder("");
+		concatChunkData(sb, "Hello, there!\n");
+		concatChunkData(sb, "How're you doing here?");
+		sb.append("0\r\n\r\n");
+
+		final StringBuilder request = new StringBuilder("");
+		request.append("POST /echo HTTP/1.1\r\n");
+		request.append("Content-Type: text/plain\r\n" );
+		request.append("Transfer-Encoding: chunked\r\n");
+		request.append("\r\n");
+		request.append(sb);
+
+		execute(request.toString());
+
+		logger.info("# postEchoSuccessful (END)\n");
+	}
+
+	@Test
+	public void postEchoFailure() throws Exception {
+		logger.info("# postEchoFailure (START)");
+
+		final StringBuilder sb = new StringBuilder("");
+		sb.append("Hello, there!\n");
+		sb.append("How're you doing here?");
+
+		final StringBuilder request = new StringBuilder("");
+		request.append("POST /echo HTTP/1.1\r\n");
+		request.append("Content-Type: text/plain\r\n" );
+		request.append("\r\n");
+		request.append(sb);
+
+		execute(request.toString());
+
+		logger.info("# postEchoFailure (END)\n");
+	}
+
+	@Test
+	public void getInvalidMethodSucessful() throws Exception {
+		logger.info("# getInvalidMethodSucessful (START)");
+		
+		final StringBuilder request = new StringBuilder("");
+
+		request.append("QUERY / HTTP/1.1\r\n");
+		request.append("\r\n");
+
+		execute(request.toString());
+		
+		logger.info("# getInvalidMethodSucessful (END)\n");
 	}
 
 	@AfterAll

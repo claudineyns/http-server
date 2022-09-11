@@ -19,6 +19,9 @@ import java.util.Map;
 import java.util.UUID;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
+import java.util.zip.GZIPOutputStream;
+
+import org.apache.commons.io.IOUtils;
 
 import io.github.net.rfc2616.utilities.AppProperties;
 import io.github.net.rfc2616.utilities.LogService;
@@ -128,6 +131,13 @@ public class ClientRequestHandler implements Runnable {
 
 	private byte continueHandleHttpRequest() throws Exception {
 		this.extractBodyPayload();
+		
+		if ( HttpMethod.POST.equals(this.requestMethod) ) {
+			if( ! this.httpRequestHeaders.containsKey("content-length") 
+					&& ! this.httpRequestHeaders.containsKey("transfer-encoding") ) {
+				return this.sendLengthRequired();
+			}
+		}
 
 		this.httpResponseHeaders.put("Content-Length", Collections.singletonList("0"));
 
@@ -170,22 +180,40 @@ public class ClientRequestHandler implements Runnable {
 		final String path = this.requestUrl.getPath();
 
 		switch (path) {
-		case "/live":
-		case "/ready":
-			return this.liveness();
-		case "/":
-			return this.sendBasicBody();
-		default:
-			return Q_NOT_FOUND;
+			case "/live":
+			case "/ready":
+				return this.liveness();
+			case "/spec":
+				return this.spec();
+			case "/":
+				return this.sendBasicBody();
+			default:
+				return Q_NOT_FOUND;
 		}
 	}
 
-	private byte handlePostRequests() {
+	private byte handlePostRequests() throws IOException {
+		final String path = this.requestUrl.getPath();
 
-		return 0;
+		switch (path) {
+			case "/echo":
+				return this.echo();
+			default:
+				return Q_NOT_FOUND;
+		}
 	}
 
-	private byte extractBodyPayload() throws Exception {
+	private byte extractBodyPayload() throws IOException {
+		final List<String> transferEncoding = this.httpRequestHeaders.get("transfer-encoding");
+
+		if( transferEncoding == null ) {
+			return extractBodyByContent();
+		}
+
+		return extractBodyByTransfer(transferEncoding);
+	}
+
+	private byte extractBodyByContent() throws IOException {
 		final List<String> contentLength = this.httpRequestHeaders.get("content-length");
 
 		if (contentLength == null || contentLength.isEmpty()) {
@@ -210,18 +238,95 @@ public class ClientRequestHandler implements Runnable {
 		return 0;
 	}
 
+	static final byte HEX_BASE = 16;
+
+	private byte extractBodyByTransfer(final List<String> transferEncoding) throws IOException {
+		StringBuilder chunkLengthStage = new StringBuilder("");
+
+		// Octets used to check end of line
+		int octet0 = 0;
+		int octet1 = 0;
+
+		int octet = 0;
+		while (true) {
+			octet = this.in.read();
+
+			octet0 = octet1;
+			octet1 = octet;
+
+			if( octet == '\r' ) { continue; }
+
+			if ( octet != '\n' && octet0 != '\r' ) {
+				chunkLengthStage.append( (char)octet );
+				continue;
+			}
+
+			final int chunkLength = Integer.parseInt(chunkLengthStage.toString(), HEX_BASE);
+
+			if(chunkLength == 0) {
+				// Read the last two octets, which are expected to be: '\r' (char 13) and '\n' (char 10) 
+				this.in.readNBytes(2);
+				break;
+			}
+
+			final byte[] chunkData = this.in.readNBytes(chunkLength);
+			this.httpRequestBody.write(chunkData);
+			
+			/*
+			 * Read the next two octets, which are expected to be: '\r' (char 13) and '\n' (char 10),
+			 * ending the chunk data
+			 */
+			this.in.readNBytes(2);
+
+			// reset the chunk length control
+			chunkLengthStage = new StringBuilder("");
+
+			// reset the octets used to check end of line
+			octet0 = 0;
+			octet1 = 0;
+		}
+
+		return 0;
+	}
+
 	private byte analyseRequestHeader(byte[] raw) throws Exception {
 		final String CRLF_RE = "\\r\\n";
 
-		final String data = new String(raw, StandardCharsets.US_ASCII).replaceAll("\\r\\n[\\s\t]", "\u0000\u0000\u0000");
+		// https://www.rfc-editor.org/rfc/rfc2616.html#section-2.2
+		/*
+		 	HTTP/1.1 header field values can be folded onto multiple lines if the
+   			continuation line begins with a space or horizontal tab. All linear
+   			white space, including folding, has the same semantics as SP.
+   			A recipient MAY replace any linear white space with a single SP before
+   			interpreting the field value or forwarding the message downstream.
+		 */
+		// https://www.rfc-editor.org/rfc/rfc2616.html#section-4.2
+		/*
+			Header fields can be extended over multiple lines by preceding each extra line with at least one SP or HT. 
+		 */
+		final String data = new String(raw, StandardCharsets.US_ASCII).replaceAll("\\r\\n[\\s\\t]+", "\u0000\u0000\u0000");
 		final String[] entries = data.split(CRLF_RE);
 
 		if (entries.length == 0) {
 			return sendBadRequest("Invalid HTTP Request");
 		}
 
-		final String methodLine = entries[0];
+		// https://www.rfc-editor.org/rfc/rfc2616.html#section-4.1
+		/*
+		 	In the interest of robustness, servers SHOULD ignore any empty
+   			line(s) received where a Request-Line is expected. In other words, if
+   			the server is reading the protocol stream at the beginning of a
+   			message and receives a CRLF first, it should ignore the CRLF.
+		 */
+		int startLine = 0;
+		while(true) {
+			if( ! entries[startLine].replaceAll("[\\s\\t]", "").isEmpty() ) {
+				break;
+			}
+			++startLine;
+		}
 
+		final String methodLine = entries[startLine];
 		final String[] methodContent = methodLine.split("\\s");
 		if (methodContent.length != 3) {
 			return sendBadRequest("Invalid HTTP Method Sintax");
@@ -250,7 +355,7 @@ public class ClientRequestHandler implements Runnable {
 		}
 
 		httpRequestHeaders.put(null, Collections.singletonList(methodLine));
-		for (int i = 1; i < entries.length; ++i) {
+		for (int i = startLine + 1; i < entries.length; ++i) {
 			final String entry = entries[i];
 			final String header = entry.substring(0, entry.indexOf(':')).toLowerCase();
 			final String value = entry.substring(entry.indexOf(':') + 1).trim().replaceAll("[\u0000]{3}", "\r\n ");
@@ -265,9 +370,7 @@ public class ClientRequestHandler implements Runnable {
 	}
 
 	private static final String gmt() {
-		final DateTimeFormatter RFC_1123_DATE_TIME = DateTimeFormatter
-				.ofPattern("EEE, dd MMM yyyy HH:mm:ss 'GMT'",
-				Locale.US);
+		final DateTimeFormatter RFC_1123_DATE_TIME = DateTimeFormatter.ofPattern("EEE, dd MMM yyyy HH:mm:ss 'GMT'", Locale.US);
 		final ZonedDateTime dt = ZonedDateTime.now(ZoneId.of("GMT"));
 
 		return dt.format(RFC_1123_DATE_TIME);
@@ -324,6 +427,35 @@ public class ClientRequestHandler implements Runnable {
 		final byte[] raw = html.getBytes(StandardCharsets.UTF_8);
 
 		this.httpResponseHeaders.put("Content-Type", Collections.singletonList("application/json"));
+		this.httpResponseHeaders.put("Content-Length", Collections.singletonList(Integer.toString(raw.length)));
+		this.httpResponseBody.write(raw);
+
+		return 0;
+	}
+
+	private byte spec() throws IOException {
+		final InputStream in = getClass().getResourceAsStream("/rfc2616.txt");
+
+		final ByteArrayOutputStream cache = new ByteArrayOutputStream();
+		final GZIPOutputStream gzip = new GZIPOutputStream(cache);
+		IOUtils.copy(in, gzip);
+		in.close();
+
+		final byte[] raw = cache.toByteArray();
+
+		this.httpResponseHeaders.put("Content-Type", Collections.singletonList("text/plain; charset=ASCII"));
+		this.httpResponseHeaders.put("Content-Encoding", Collections.singletonList("gzip"));
+		this.httpResponseHeaders.put("Content-Length", Collections.singletonList(Integer.toString(raw.length)));
+		this.httpResponseBody.write(raw);
+
+		return 0;
+	}
+
+	private byte echo() throws IOException {
+		final List<String> contentType = this.httpRequestHeaders.get("content-type");
+		final byte[] raw = this.httpResponseBody.toByteArray();
+
+		this.httpResponseHeaders.put("Content-Type", contentType);
 		this.httpResponseHeaders.put("Content-Length", Collections.singletonList(Integer.toString(raw.length)));
 		this.httpResponseBody.write(raw);
 
@@ -406,6 +538,14 @@ public class ClientRequestHandler implements Runnable {
 
 	private byte sendMethodNotAllowed() throws IOException {
 		this.sendStatusLine("HTTP/1.1 405 Method Not Allowed");
+		sendDateHeader();
+		sendServerHeader();
+
+		return mountTerminateConnection();
+	}
+
+	private byte sendLengthRequired() throws IOException {
+		this.sendStatusLine("HTTP/1.1 411 Length Required");
 		sendDateHeader();
 		sendServerHeader();
 
