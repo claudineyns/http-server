@@ -26,7 +26,11 @@ Once started the server will listen on `127.0.0.1:8080` and the following endpoi
 | URI  | Supported Methods |
 | ------------- | ------------- |
 | `/`  | OPTIONS, GET, POST  |
-| `/svgToPng`  | OPTIONS, GET | 
+| `/echo`  | POST | 
+| `/page`  | GET | 
+| `/spec`  | GET | 
+| `/live`  | GET | 
+| `/ready`  | GET | 
 
 ## Deployment
 
