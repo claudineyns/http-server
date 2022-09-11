@@ -7,10 +7,8 @@ import java.net.Inet4Address;
 import java.net.InetAddress;
 import java.net.InetSocketAddress;
 import java.net.Socket;
-import java.net.URLEncoder;
 import java.nio.charset.StandardCharsets;
 import java.util.concurrent.CompletableFuture;
-import java.util.logging.Logger;
 
 import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.BeforeAll;
@@ -19,34 +17,33 @@ import org.junit.jupiter.api.TestInstance;
 import org.junit.jupiter.api.TestInstance.Lifecycle;
 
 import io.github.net.rfc2616.server.Worker;
+import io.github.net.rfc2616.utilities.LogService;
 
 @TestInstance(Lifecycle.PER_CLASS)
 public class TestCase {
-	final Logger logger = Logger.getLogger(getClass().getCanonicalName());
+	final LogService logger = LogService.getInstance(TestCase.class.getSimpleName());
 
 	@BeforeAll
 	public void startup() throws Exception {
-		logger.info("[TEST] Getting server up...");
+		logger.info("Getting server up...");
 		CompletableFuture.runAsync(()-> {
 			try { Worker.main(new String[] {}); } catch(IOException e) {} 
 		});
 		Thread.sleep(250L);
-		logger.info("[TEST] Server is up");
+		logger.info("Server is up\n");
 	}
 	
 	private void execute(final String content) throws Exception {
-
 		final InetAddress address = Inet4Address.getByName("localhost");
 		final InetSocketAddress socketAddress = new InetSocketAddress(address, 8080);
 
-		final int connect_timeout = 2000;
+		final int connect_timeout = 5000;
 
-		logger.info("[TEST] Connecting...");
+		logger.info("Connecting...");
 		final Socket socket = new Socket();
+		socket.setSoTimeout(10000);
 		socket.connect(socketAddress, connect_timeout);
-		
-		logger.info("[TEST] Connected.");
-		Thread.sleep(250L);
+		logger.info("Connected.");
 		
 		final OutputStream out = socket.getOutputStream();
 		final InputStream in = socket.getInputStream();
@@ -54,93 +51,211 @@ public class TestCase {
 		out.write(content.getBytes(StandardCharsets.US_ASCII) );
 		out.flush();
 		
-		final StringBuilder sb = new StringBuilder("");
-		
-		int reader = -1;
 		try {
-			while((reader = in.read()) != -1) {
-				sb.append((char)reader);
-			}
+			while(in.read() != -1);
 		} catch(IOException e) {}
 
 		try { socket.close(); } catch(IOException e) {}
 
-		logger.info("[TEST] Disconnected.");
+		logger.info("Disconnected.");
 	}
 	
 	@Test
-	public void getRootAsSuccess() throws Exception {
-		logger.info("# getRootAsSuccess (START)");
+	public void getRootSuccessfull() throws Exception {
+		logger.info("# getRootSuccessfull (START)");
 		
 		final StringBuilder request = new StringBuilder("");
 		request.append("GET / HTTP/1.1\r\n");
+		request.append("Connection: close\r\n");
 		request.append("\r\n");
 
 		execute(request.toString());
 		
-		logger.info("# getRootAsSuccess (END)");
+		logger.info("# getRootSuccessfull (END)\n");
 	}
 	
 	@Test
-	public void getSvgAsSuccess() throws Exception {
-		logger.info("# getSvgAsSuccess (START)");
+	public void getLivenessSuccessful() throws Exception {
+		logger.info("# getLivenessSuccessful (START)");
 		
 		final StringBuilder request = new StringBuilder("");
-		final String url = URLEncoder.encode("https://ob-public-files.s3.amazonaws.com/simbolo_open_finance.HTML.svg", "UTF-8");
-
-		request.append("GET /svgToPng?url=").append(url).append(" HTTP/1.1\r\n");
+		request.append("GET /live HTTP/1.1\r\n");
+		request.append("Connection: close\r\n");
 		request.append("\r\n");
 
 		execute(request.toString());
 		
-		logger.info("# getSvgAsSuccess (END)");
+		logger.info("# getLivenessSuccessful (END)\n");
 	}
 	
 	@Test
-	public void getSvgAsFailure() throws Exception {
-		logger.info("# getSvgAsFailure (START)");
+	public void getReadinessSuccessful() throws Exception {
+		logger.info("# getReadinessSuccessful (START)");
 		
 		final StringBuilder request = new StringBuilder("");
-
-		request.append("GET /svgToPng HTTP/1.1\r\n");
+		request.append("GET /ready HTTP/1.1\r\n");
+		request.append("Connection: close\r\n");
 		request.append("\r\n");
 
 		execute(request.toString());
 		
-		logger.info("# getSvgAsFailure (END)");
+		logger.info("# getReadinessSuccessful (END)\n");
 	}
 	
 	@Test
-	public void getInvalidAsFailure() throws Exception {
-		logger.info("# getInvalidAsFailure (START)");
+	public void getSpecSuccessful() throws Exception {
+		logger.info("# getSpecSuccessful (START)");
+		
+		final StringBuilder request = new StringBuilder("");
+		request.append("GET /spec HTTP/1.1\r\n");
+		request.append("Connection: close\r\n");
+		request.append("\r\n");
+
+		execute(request.toString());
+		
+		logger.info("# getSpecSuccessful (END)\n");
+	}
+	
+	@Test
+	public void getPageSuccessful() throws Exception {
+		logger.info("# getPageSuccessful (START)");
+		
+		final StringBuilder request = new StringBuilder("");
+		request.append("GET /page HTTP/1.1\r\n");
+		request.append("Connection: close\r\n");
+		request.append("\r\n");
+
+		execute(request.toString());
+		
+		logger.info("# getPageSuccessful (END)\n");
+	}
+	
+	@Test
+	public void getPageJsSuccessful() throws Exception {
+		logger.info("# getPageJsSuccessful (START)");
+		
+		final StringBuilder request = new StringBuilder("");
+		request.append("GET /app.js HTTP/1.1\r\n");
+		request.append("Connection: close\r\n");
+		request.append("\r\n");
+
+		execute(request.toString());
+		
+		logger.info("# getPageJsSuccessful (END)\n");
+	}
+	
+	@Test
+	public void getVersionNotSupportedSuccessful() throws Exception {
+		logger.info("# getVersionNotSupportedSuccessful (START)");
+		
+		final StringBuilder request = new StringBuilder("");
+		request.append("GET / HTTP/1.2\r\n");
+		request.append("Connection: close\r\n");
+		request.append("\r\n");
+
+		execute(request.toString());
+
+		logger.info("# getVersionNotSupportedSuccessful (END)\n");
+	}
+	
+	@Test
+	public void getInvalidPathSucessful() throws Exception {
+		logger.info("# getInvalidPathSucessful (START)");
 		
 		final StringBuilder request = new StringBuilder("");
 
 		request.append("GET /notFound HTTP/1.1\r\n");
+		request.append("Connection: close\r\n");
 		request.append("\r\n");
 
 		execute(request.toString());
 		
-		logger.info("# getInvalidAsFailure (END)");
+		logger.info("# getInvalidPathSucessful (END)\n");
 	}
 
 	@Test
-	public void postRootAsSuccess() throws Exception {
-		logger.info("# postRootAsSuccess (START)");
+	public void postRootSuccessful() throws Exception {
+		logger.info("# postRootSuccessful (START)");
 		
 		final String content = "Test Post request";
 		final byte[] raw = content.getBytes(StandardCharsets.US_ASCII);
 		
 		final StringBuilder request = new StringBuilder("");
 		request.append("POST / HTTP/1.1\r\n");
-		request.append("Content-Type: text/plain\r\n" );
+		request.append("Content-Type: text/plain;\r\n charset=UTF8\r\n" );
 		request.append("Content-Length: ").append(raw.length).append("\r\n");
+		request.append("Connection: close\r\n");
 		request.append("\r\n");
 		request.append(content);
 
 		execute(request.toString());
 		
-		logger.info("# postRootAsSuccess (END)");
+		logger.info("# postRootSuccessful (END)\n");
+	}
+
+	static void concatChunkData(final StringBuilder sb, final String message) {
+		final byte[] raw = message.getBytes(StandardCharsets.US_ASCII);
+		sb.append(Integer.toString(raw.length, 16));
+		sb.append("\r\n");
+		sb.append(message);
+		sb.append("\r\n");
+	}
+
+	@Test
+	public void postEchoSuccessful() throws Exception {
+		logger.info("# postEchoSuccessful (START)");
+
+		final StringBuilder sb = new StringBuilder("");
+		concatChunkData(sb, "Hello, there!\n");
+		concatChunkData(sb, "How're you doing here?");
+		sb.append("0\r\n\r\n");
+
+		final StringBuilder request = new StringBuilder("");
+		request.append("POST /echo HTTP/1.1\r\n");
+		request.append("Content-Type: text/plain\r\n" );
+		request.append("Transfer-Encoding: chunked\r\n");
+		request.append("Connection: close\r\n");
+		request.append("\r\n");
+		request.append(sb);
+
+		execute(request.toString());
+
+		logger.info("# postEchoSuccessful (END)\n");
+	}
+
+	@Test
+	public void postEchoFailure() throws Exception {
+		logger.info("# postEchoFailure (START)");
+
+		final StringBuilder sb = new StringBuilder("");
+		sb.append("Hello, there!\n");
+		sb.append("How're you doing here?");
+
+		final StringBuilder request = new StringBuilder("");
+		request.append("POST /echo HTTP/1.1\r\n");
+		request.append("Content-Type: text/plain\r\n" );
+		request.append("Connection: close\r\n");
+		request.append("\r\n");
+		request.append(sb);
+
+		execute(request.toString());
+
+		logger.info("# postEchoFailure (END)\n");
+	}
+
+	@Test
+	public void getInvalidMethodSucessful() throws Exception {
+		logger.info("# getInvalidMethodSucessful (START)");
+		
+		final StringBuilder request = new StringBuilder("");
+
+		request.append("QUERY / HTTP/1.1\r\n");
+		request.append("Connection: close\r\n");
+		request.append("\r\n");
+
+		execute(request.toString());
+		
+		logger.info("# getInvalidMethodSucessful (END)\n");
 	}
 
 	@AfterAll

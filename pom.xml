@@ -3,7 +3,7 @@
   <modelVersion>4.0.0</modelVersion>
   <groupId>net.rfc2616</groupId>
   <artifactId>http-server</artifactId>
-  <version>0.0.1-SNAPSHOT</version>
+  <version>0.0.2-SNAPSHOT</version>
 
   <name>http-server</name>
   <description>Very basic http server implementation based on RFC2616</description>
@@ -44,18 +44,6 @@
       <groupId>commons-io</groupId>
       <artifactId>commons-io</artifactId>
       <version>2.7</version>
-    </dependency>
-
-    <!-- https://mvnrepository.com/artifact/org.apache.xmlgraphics/batik-transcoder -->
-    <dependency>
-      <groupId>org.apache.xmlgraphics</groupId>
-      <artifactId>batik-transcoder</artifactId>
-      <version>1.14</version>
-    </dependency>
-    <dependency>
-      <groupId>org.apache.xmlgraphics</groupId>
-      <artifactId>batik-codec</artifactId>
-      <version>1.14</version>
     </dependency>
 
   </dependencies>
