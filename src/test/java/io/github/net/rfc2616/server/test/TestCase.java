@@ -30,11 +30,10 @@ public class TestCase {
 			try { Worker.main(new String[] {}); } catch(IOException e) {} 
 		});
 		Thread.sleep(250L);
-		logger.info("Server is up");
+		logger.info("Server is up\n");
 	}
 	
 	private void execute(final String content) throws Exception {
-
 		final InetAddress address = Inet4Address.getByName("localhost");
 		final InetSocketAddress socketAddress = new InetSocketAddress(address, 8080);
 
@@ -67,6 +66,7 @@ public class TestCase {
 		
 		final StringBuilder request = new StringBuilder("");
 		request.append("GET / HTTP/1.1\r\n");
+		request.append("Connection: close\r\n");
 		request.append("\r\n");
 
 		execute(request.toString());
@@ -80,6 +80,7 @@ public class TestCase {
 		
 		final StringBuilder request = new StringBuilder("");
 		request.append("GET /live HTTP/1.1\r\n");
+		request.append("Connection: close\r\n");
 		request.append("\r\n");
 
 		execute(request.toString());
@@ -93,6 +94,7 @@ public class TestCase {
 		
 		final StringBuilder request = new StringBuilder("");
 		request.append("GET /ready HTTP/1.1\r\n");
+		request.append("Connection: close\r\n");
 		request.append("\r\n");
 
 		execute(request.toString());
@@ -106,11 +108,54 @@ public class TestCase {
 		
 		final StringBuilder request = new StringBuilder("");
 		request.append("GET /spec HTTP/1.1\r\n");
+		request.append("Connection: close\r\n");
 		request.append("\r\n");
 
 		execute(request.toString());
 		
 		logger.info("# getSpecSuccessful (END)\n");
+	}
+	
+	@Test
+	public void getPageSuccessful() throws Exception {
+		logger.info("# getPageSuccessful (START)");
+		
+		final StringBuilder request = new StringBuilder("");
+		request.append("GET /page HTTP/1.1\r\n");
+		request.append("Connection: close\r\n");
+		request.append("\r\n");
+
+		execute(request.toString());
+		
+		logger.info("# getPageSuccessful (END)\n");
+	}
+	
+	@Test
+	public void getPageJsSuccessful() throws Exception {
+		logger.info("# getPageJsSuccessful (START)");
+		
+		final StringBuilder request = new StringBuilder("");
+		request.append("GET /app.js HTTP/1.1\r\n");
+		request.append("Connection: close\r\n");
+		request.append("\r\n");
+
+		execute(request.toString());
+		
+		logger.info("# getPageJsSuccessful (END)\n");
+	}
+	
+	@Test
+	public void getVersionNotSupportedSuccessful() throws Exception {
+		logger.info("# getVersionNotSupportedSuccessful (START)");
+		
+		final StringBuilder request = new StringBuilder("");
+		request.append("GET / HTTP/1.2\r\n");
+		request.append("Connection: close\r\n");
+		request.append("\r\n");
+
+		execute(request.toString());
+
+		logger.info("# getVersionNotSupportedSuccessful (END)\n");
 	}
 	
 	@Test
@@ -120,6 +165,7 @@ public class TestCase {
 		final StringBuilder request = new StringBuilder("");
 
 		request.append("GET /notFound HTTP/1.1\r\n");
+		request.append("Connection: close\r\n");
 		request.append("\r\n");
 
 		execute(request.toString());
@@ -138,6 +184,7 @@ public class TestCase {
 		request.append("POST / HTTP/1.1\r\n");
 		request.append("Content-Type: text/plain;\r\n charset=UTF8\r\n" );
 		request.append("Content-Length: ").append(raw.length).append("\r\n");
+		request.append("Connection: close\r\n");
 		request.append("\r\n");
 		request.append(content);
 
@@ -167,6 +214,7 @@ public class TestCase {
 		request.append("POST /echo HTTP/1.1\r\n");
 		request.append("Content-Type: text/plain\r\n" );
 		request.append("Transfer-Encoding: chunked\r\n");
+		request.append("Connection: close\r\n");
 		request.append("\r\n");
 		request.append(sb);
 
@@ -186,6 +234,7 @@ public class TestCase {
 		final StringBuilder request = new StringBuilder("");
 		request.append("POST /echo HTTP/1.1\r\n");
 		request.append("Content-Type: text/plain\r\n" );
+		request.append("Connection: close\r\n");
 		request.append("\r\n");
 		request.append(sb);
 
@@ -201,6 +250,7 @@ public class TestCase {
 		final StringBuilder request = new StringBuilder("");
 
 		request.append("QUERY / HTTP/1.1\r\n");
+		request.append("Connection: close\r\n");
 		request.append("\r\n");
 
 		execute(request.toString());

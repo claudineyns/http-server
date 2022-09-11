@@ -5,11 +5,13 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
 import java.net.Socket;
+import java.net.SocketTimeoutException;
 import java.net.URL;
 import java.nio.charset.StandardCharsets;
 import java.time.ZoneId;
 import java.time.ZonedDateTime;
 import java.time.format.DateTimeFormatter;
+import java.util.Arrays;
 import java.util.Collections;
 import java.util.LinkedHashMap;
 import java.util.LinkedList;
@@ -23,6 +25,7 @@ import java.util.zip.GZIPOutputStream;
 
 import org.apache.commons.io.IOUtils;
 
+import io.github.net.rfc2616.exceptions.CloseConnectionException;
 import io.github.net.rfc2616.utilities.AppProperties;
 import io.github.net.rfc2616.utilities.LogService;
 
@@ -38,33 +41,46 @@ public class ClientRequestHandler implements Runnable {
 		this.client = c;
 	}
 
+	private boolean interrupt = false;
+
+	final int socket_timeout = 10000;
+
 	@Override
 	public void run() {
-
 		try {
+			this.client.setSoTimeout(socket_timeout);
 			this.in = client.getInputStream();
 			this.out = client.getOutputStream();
+		} catch(IOException e) {
+			logger.warning("Request startup error: {}", e.getMessage());
+			return;
+		}
 
-			this.handle();
-
-			this.out.close();
-			this.in.close();
-		} catch (IOException e) {
-			logger.warning("Request handling error: {}", e.getMessage());
+		while(true) {
+			try {
+				this.handle();
+				if(!interrupt) {
+					continue;
+				}
+			} catch (SocketTimeoutException e) {
+				logger.warning(e.getMessage());
+			} catch (CloseConnectionException e) {
+				logger.warning("Connection closed");
+			} catch (IOException e) {
+				logger.warning("Request handling error: {}", e.getMessage());
+			}
+			break;
 		}
 
 		try {
 			client.close();
-		} catch (IOException e) {
-			logger.warning("Client connection closing error: {}", e.getMessage());
-		}
+		} catch (IOException e) { /***/ }
 
 		logger.info("Client request completed");
-
 	}
 
 	private static enum HttpMethod {
-		OPTIONS, GET, POST, PUT, DELETE, TRACE, CONNECT;
+		OPTIONS, HEAD, GET, POST, PUT, DELETE, TRACE, CONNECT;
 
 		static HttpMethod from(final String method) {
 			if (method == null) {
@@ -89,37 +105,54 @@ public class ClientRequestHandler implements Runnable {
 	private Map<String, List<String>> httpRequestHeaders = new LinkedHashMap<>();
 	private ByteArrayOutputStream httpRequestBody = new ByteArrayOutputStream();
 
-	private void handle() throws IOException {
-		try {
-			this.startHandleHttpRequest();
-			if (this.requestMethod != null) {
-				this.continueHandleHttpRequest();
-			}
-			out.flush();
-		} catch (Exception e) {
-			logger.error(e.getMessage());
+	private byte handle() throws IOException {
+		this.startHandleHttpRequest();
+
+		if (this.requestMethod != null) {
+			this.continueHandleHttpRequest();
 		}
+		out.flush();
+
+		return this.checkCloseConnection();
+	}
+	
+	private byte checkCloseConnection() throws IOException {
+		final List<String> connectionHeader = this.httpRequestHeaders.get("connection");
+		if ( connectionHeader != null && ! connectionHeader.isEmpty() && "close".equalsIgnoreCase(connectionHeader.get(0)) ) {
+			logger.warning("Client has requested server to close connection");
+			throw new CloseConnectionException();
+		}
+
+		return 0;
 	}
 
-	private void startHandleHttpRequest() throws Exception {
+	private void startHandleHttpRequest() throws IOException {
 		final ByteArrayOutputStream cache = new ByteArrayOutputStream();
+		
+		int octet0 = 0;
+		int octet1 = 0;
+		int octet2 = 0;
+		int octet3 = 0;
 
-		int reader = -1;
-		while ((reader = in.read()) != -1) {
-			cache.write(reader);
+		int octet = -1;
+		while ((octet = in.read()) != -1) {
+			cache.write(octet);
 
-			byte[] memory = cache.toByteArray();
-			if (memory.length >= 4) {
-				if (	memory[memory.length - 4] == '\r' 
-					&&	memory[memory.length - 3] == '\n'
-					&&	memory[memory.length - 2] == '\r' 
-					&&	memory[memory.length - 1] == '\n'
-				) {
+			octet0 = octet1;
+			octet1 = octet2;
+			octet2 = octet3;
+			octet3 = octet;
 
-					this.analyseRequestHeader(memory);
-					break;
+			if (	octet0 == '\r' 
+				&&	octet1 == '\n'
+				&&	octet2 == '\r' 
+				&&	octet3 == '\n'
+			) {
+				
+				final byte[] rawHeaders = cache.toByteArray();
+				this.analyseRequestHeader(Arrays.copyOfRange(rawHeaders, 0, rawHeaders.length - 4));
+				break;
 
-				}
 			}
 
 		}
@@ -129,7 +162,7 @@ public class ClientRequestHandler implements Runnable {
 	static final byte Q_NOT_FOUND = -2;
 	static final byte Q_SERVER_ERROR = 1;
 
-	private byte continueHandleHttpRequest() throws Exception {
+	private byte continueHandleHttpRequest() throws IOException {
 		this.extractBodyPayload();
 		
 		if ( HttpMethod.POST.equals(this.requestMethod) ) {
@@ -185,6 +218,10 @@ public class ClientRequestHandler implements Runnable {
 				return this.liveness();
 			case "/spec":
 				return this.spec();
+			case "/page":
+				return this.page();
+			case "/app.js":
+				return this.appJs();
 			case "/":
 				return this.sendBasicBody();
 			default:
@@ -264,7 +301,10 @@ public class ClientRequestHandler implements Runnable {
 			final int chunkLength = Integer.parseInt(chunkLengthStage.toString(), HEX_BASE);
 
 			if(chunkLength == 0) {
-				// Read the last two octets, which are expected to be: '\r' (char 13) and '\n' (char 10) 
+				/*
+				 * Read the last two octets, which are expected to be: '\r' (char 13) and '\n' (char 10),
+				 * ending the full chunk payload parsing 
+				 */
 				this.in.readNBytes(2);
 				break;
 			}
@@ -274,7 +314,7 @@ public class ClientRequestHandler implements Runnable {
 			
 			/*
 			 * Read the next two octets, which are expected to be: '\r' (char 13) and '\n' (char 10),
-			 * ending the chunk data
+			 * ending the actual chunk data
 			 */
 			this.in.readNBytes(2);
 
@@ -289,7 +329,7 @@ public class ClientRequestHandler implements Runnable {
 		return 0;
 	}
 
-	private byte analyseRequestHeader(byte[] raw) throws Exception {
+	private byte analyseRequestHeader(byte[] raw) throws IOException {
 		final String CRLF_RE = "\\r\\n";
 
 		// https://www.rfc-editor.org/rfc/rfc2616.html#section-2.2
@@ -308,6 +348,7 @@ public class ClientRequestHandler implements Runnable {
 		final String[] entries = data.split(CRLF_RE);
 
 		if (entries.length == 0) {
+			this.interrupt = true;
 			return sendBadRequest("Invalid HTTP Request");
 		}
 
@@ -329,28 +370,35 @@ public class ClientRequestHandler implements Runnable {
 		final String methodLine = entries[startLine];
 		final String[] methodContent = methodLine.split("\\s");
 		if (methodContent.length != 3) {
+			this.interrupt = true;
 			return sendBadRequest("Invalid HTTP Method Sintax");
 		}
 
 		logger.info(methodLine);
 
-		final String methodLineLower = methodLine.toUpperCase();
+		final String httpVersion = methodContent[2];
+		if ( ! "HTTP/1.1".equalsIgnoreCase(httpVersion) ) {
+			this.interrupt = true;
+			return sendVersionNotSupported();
+		}
 
-		final String method = methodLineLower.contains(" ")
-				? methodLineLower.substring(0, methodLineLower.indexOf(" "))
-				: methodLineLower;
+		final String methodLineLower = methodLine.toUpperCase();
+		final String method = methodLineLower.substring(0, methodLineLower.indexOf(" "));
 
 		final HttpMethod httpMethod = HttpMethod.from(method);
 		if (httpMethod == null) {
-			return sendMethodNotAllowed();
+			this.interrupt = true;
+			return sendMethodNotImplemented();
 		}
 
 		if (!methodLineLower.toUpperCase().startsWith(httpMethod.name() + " ")) {
+			this.interrupt = true;
 			return sendBadRequest("Invalid HTTP Method Sintax");
 		}
 
 		final String uri = methodContent[1];
 		if (!validateURI(uri)) {
+			this.interrupt = true;
 			return sendBadRequest("Invalid HTTP URI");
 		}
 
@@ -451,6 +499,41 @@ public class ClientRequestHandler implements Runnable {
 		return 0;
 	}
 
+	private byte page() throws IOException {
+		final StringBuilder sb = new StringBuilder("");
+		sb.append("<!DOCTYPE html>\n");
+		sb.append("<html>\n");
+		sb.append("<head>\n");
+		sb.append("<meta charset=\"UTF-8\">\n");
+		sb.append("<title>Page</title>\n");
+		sb.append("</head>\n");
+		sb.append("<body>\n");
+		sb.append("<script type=\"text/javascript\" src=\"/app.js\"></script>\n");
+		sb.append("</body>\n");
+		sb.append("</html>\n");
+
+		final byte[] raw = sb.toString().getBytes(StandardCharsets.UTF_8);
+
+		this.httpResponseHeaders.put("Content-Type", Collections.singletonList("text/html; charset=UTF-8"));
+		this.httpResponseHeaders.put("Content-Length", Collections.singletonList(Integer.toString(raw.length)));
+		this.httpResponseBody.write(raw);
+
+		return 0;
+	}
+
+	private byte appJs() throws IOException {
+		final StringBuilder sb = new StringBuilder("");
+		sb.append("(function(){document.write(\"Hello, there!\");})();");
+
+		final byte[] raw = sb.toString().getBytes(StandardCharsets.UTF_8);
+
+		this.httpResponseHeaders.put("Content-Type", Collections.singletonList("application/javascript"));
+		this.httpResponseHeaders.put("Content-Length", Collections.singletonList(Integer.toString(raw.length)));
+		this.httpResponseBody.write(raw);
+
+		return 0;
+	}
+
 	private byte echo() throws IOException {
 		final List<String> contentType = this.httpRequestHeaders.get("content-type");
 		final byte[] raw = this.httpResponseBody.toByteArray();
@@ -485,12 +568,6 @@ public class ClientRequestHandler implements Runnable {
 		return 0;
 	}
 
-	private byte sendConnectionCloseHeader() throws IOException {
-		out.write(("Connection: close" + CRLF).getBytes(StandardCharsets.US_ASCII));
-
-		return 0;
-	}
-
 	private byte mountCustomBody() throws IOException {
 		out.write(this.httpResponseBody.toByteArray());
 
@@ -498,7 +575,6 @@ public class ClientRequestHandler implements Runnable {
 	}
 
 	private byte mountTerminateConnection() throws IOException {
-		sendConnectionCloseHeader();
 		out.write(CRLF_RAW);
 
 		return 0;
@@ -535,30 +611,38 @@ public class ClientRequestHandler implements Runnable {
 
 		return 0;
 	}
+	
+	private byte sendVersionNotSupported() throws IOException {
+		this.sendStatusLine("HTTP/1.1 505 HTTP Version not supported");
+		this.sendDateHeader();
+		this.sendServerHeader();
 
-	private byte sendMethodNotAllowed() throws IOException {
-		this.sendStatusLine("HTTP/1.1 405 Method Not Allowed");
-		sendDateHeader();
-		sendServerHeader();
+		return this.mountTerminateConnection();
+	}
 
-		return mountTerminateConnection();
+	private byte sendMethodNotImplemented() throws IOException {
+		this.sendStatusLine("HTTP/1.1 501 Not Implemented");
+		this.sendDateHeader();
+		this.sendServerHeader();
+
+		return this.mountTerminateConnection();
 	}
 
 	private byte sendLengthRequired() throws IOException {
 		this.sendStatusLine("HTTP/1.1 411 Length Required");
-		sendDateHeader();
-		sendServerHeader();
+		this.sendDateHeader();
+		this.sendServerHeader();
 
-		return mountTerminateConnection();
+		return this.mountTerminateConnection();
 	}
 
 	private byte sendServerError(String cause) throws IOException {
 		this.sendStatusLine("HTTP/1.1 500 Server Error");
-		sendDateHeader();
-		sendServerHeader();
+		this.sendDateHeader();
+		this.sendServerHeader();
 
 		if (cause == null) {
-			return mountTerminateConnection();
+			return this.mountTerminateConnection();
 		}
 
 		final byte[] raw = cause.getBytes(StandardCharsets.US_ASCII);
