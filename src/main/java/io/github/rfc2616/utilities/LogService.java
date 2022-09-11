@@ -1,4 +1,4 @@
-package io.github.net.rfc2616.utilities;
+package io.github.rfc2616.utilities;
 
 import java.io.PrintStream;
 import java.time.LocalDateTime;

@@ -1,5 +1,6 @@
-package io.github.net.rfc2616.server.test;
+package io.github.rfc2616.server.test;
 
+import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
@@ -8,6 +9,7 @@ import java.net.InetAddress;
 import java.net.InetSocketAddress;
 import java.net.Socket;
 import java.nio.charset.StandardCharsets;
+import java.util.Arrays;
 import java.util.concurrent.CompletableFuture;
 
 import org.junit.jupiter.api.AfterAll;
@@ -16,8 +18,8 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.TestInstance;
 import org.junit.jupiter.api.TestInstance.Lifecycle;
 
-import io.github.net.rfc2616.server.Worker;
-import io.github.net.rfc2616.utilities.LogService;
+import io.github.rfc2616.server.Worker;
+import io.github.rfc2616.utilities.LogService;
 
 @TestInstance(Lifecycle.PER_CLASS)
 public class TestCase {
@@ -51,11 +53,27 @@ public class TestCase {
 		out.write(content.getBytes(StandardCharsets.US_ASCII) );
 		out.flush();
 		
+		final ByteArrayOutputStream rawData = new ByteArrayOutputStream();
+		int octet = -1;
 		try {
-			while(in.read() != -1);
+			
+			while( (octet = in.read()) != -1) {
+				rawData.write(octet);
+			}
 		} catch(IOException e) {}
 
 		try { socket.close(); } catch(IOException e) {}
+		
+		final StringBuilder info = new StringBuilder("");
+		final String response = new String(rawData.toByteArray(), StandardCharsets.ISO_8859_1);
+		Arrays.asList(response.split("\\r\\n")).forEach(q -> {
+			if(q.toLowerCase().startsWith("server")) {
+				info.append("\n").append(q);
+			} else if(q.toLowerCase().startsWith("x-powered-by")) {
+				info.append("\n").append(q);
+			}
+		}); 
+		logger.info(info.toString());
 
 		logger.info("Disconnected.");
 	}
@@ -72,6 +90,20 @@ public class TestCase {
 		execute(request.toString());
 		
 		logger.info("# getRootSuccessfull (END)\n");
+	}
+	
+	@Test
+	public void getPingSuccessful() throws Exception {
+		logger.info("# getPingSuccessful (START)");
+		
+		final StringBuilder request = new StringBuilder("");
+		request.append("OPTIONS * HTTP/1.1\r\n");
+		request.append("Connection: close\r\n");
+		request.append("\r\n");
+
+		execute(request.toString());
+
+		logger.info("# getPingSuccessful (END)\n");
 	}
 	
 	@Test

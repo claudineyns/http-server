@@ -1,6 +1,6 @@
-package io.github.net.rfc2616.utilities;
+package io.github.rfc2616.utilities;
 
-import static io.github.net.rfc2616.utilities.Utils.nullValue;
+import static io.github.rfc2616.utilities.Utils.nullValue;
 
 import java.net.Inet4Address;
 import java.net.UnknownHostException;

@@ -1,4 +1,4 @@
-package io.github.net.rfc2616.utilities.test;
+package io.github.rfc2616.utilities.test;
 
 import java.util.UUID;
 
@@ -7,7 +7,7 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.TestInstance;
 import org.junit.jupiter.api.TestInstance.Lifecycle;
 
-import io.github.net.rfc2616.utilities.LogService;
+import io.github.rfc2616.utilities.LogService;
 
 @TestInstance(Lifecycle.PER_CLASS)
 public class LogServiceTest {
