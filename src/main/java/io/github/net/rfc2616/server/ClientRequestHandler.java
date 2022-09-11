@@ -76,7 +76,7 @@ public class ClientRequestHandler implements Runnable {
 			client.close();
 		} catch (IOException e) { /***/ }
 
-		logger.info("Client request completed");
+		logger.info("Client connection terminated.");
 	}
 
 	private static enum HttpMethod {
@@ -101,11 +101,23 @@ public class ClientRequestHandler implements Runnable {
 
 	private HttpMethod requestMethod = null;
 	private URL requestUrl = null;
-
 	private Map<String, List<String>> httpRequestHeaders = new LinkedHashMap<>();
 	private ByteArrayOutputStream httpRequestBody = new ByteArrayOutputStream();
+	private Map<String, List<String>> httpResponseHeaders = new LinkedHashMap<>();
+	private ByteArrayOutputStream httpResponseBody = new ByteArrayOutputStream();
+	
+	private void cleanup() {
+		this.requestMethod = null;
+		this.requestUrl = null;
+		this.httpRequestHeaders.clear();
+		this.httpResponseHeaders.clear();
+		this.httpRequestBody.reset();
+		this.httpResponseBody.reset();
+	}
 
 	private byte handle() throws IOException {
+		this.cleanup();
+		
 		this.startHandleHttpRequest();
 
 		if (this.requestMethod != null) {
@@ -410,6 +422,10 @@ public class ClientRequestHandler implements Runnable {
 			httpRequestHeaders.putIfAbsent(header, new LinkedList<>());
 			httpRequestHeaders.get(header).add(value);
 		}
+		
+		if( this.httpRequestHeaders.containsKey("user-agent")) {
+			logger.info(this.httpRequestHeaders.get("user-agent").get(0));
+		}
 
 		this.requestUrl = new URL("http://localhost" + uri);
 		this.requestMethod = httpMethod;
@@ -661,9 +677,6 @@ public class ClientRequestHandler implements Runnable {
 
 		return uriMatcher.matches();
 	}
-
-	private Map<String, List<String>> httpResponseHeaders = new LinkedHashMap<>();
-	private ByteArrayOutputStream httpResponseBody = new ByteArrayOutputStream();
 
 	private byte sendResponse() throws IOException {
 		this.sendStatusLine("HTTP/1.1 200 OK");
