@@ -102,6 +102,8 @@ public class ClientRequestHandler implements Runnable {
 
 	private HttpMethod requestMethod = null;
 	private URL requestUrl = null;
+
+	private ByteArrayOutputStream httpRawRequestHeaders = new ByteArrayOutputStream();
 	private Map<String, List<String>> httpRequestHeaders = new LinkedHashMap<>();
 	private ByteArrayOutputStream httpRequestBody = new ByteArrayOutputStream();
 	private Map<String, List<String>> httpResponseHeaders = new LinkedHashMap<>();
@@ -161,8 +163,9 @@ public class ClientRequestHandler implements Runnable {
 				&&	octet2 == '\r' 
 				&&	octet3 == '\n'
 			) {
-				
+
 				final byte[] rawHeaders = cache.toByteArray();
+				this.httpRawRequestHeaders.write(rawHeaders);
 				this.analyseRequestHeader(Arrays.copyOfRange(rawHeaders, 0, rawHeaders.length - 4));
 				break;
 
@@ -207,6 +210,9 @@ public class ClientRequestHandler implements Runnable {
 		case OPTIONS:
 			returnCode = this.handleOptionsRequests();
 			break;
+		case TRACE:
+			returnCode = this.handleTraceRequests();
+			break;
 		case GET:
 			returnCode = this.handleGetRequests();
 			break;
@@ -214,7 +220,7 @@ public class ClientRequestHandler implements Runnable {
 			returnCode = this.handlePostRequests();
 			break;
 		default:
-			break;
+			return this.sendMethodNotAllowed();
 		}
 
 		if (returnCode == Q_BAD_REQUEST) {
@@ -235,6 +241,14 @@ public class ClientRequestHandler implements Runnable {
 	private byte handleOptionsRequests() {
 		try {
 			return doHandleOptionsRequests();
+		} catch (IOException e) {
+			return 1;
+		}
+	}
+	
+	private byte handleTraceRequests() {
+		try {
+			return doHandleTraceRequests();
 		} catch (IOException e) {
 			return 1;
 		}
@@ -269,6 +283,17 @@ public class ClientRequestHandler implements Runnable {
 				return Q_NOT_FOUND;
 		}
 		
+	}
+	
+	private byte doHandleTraceRequests() throws IOException {
+		final byte[] raw = this.httpRawRequestHeaders.toByteArray();
+
+		this.httpResponseHeaders.put("Content-Type", Collections.singletonList("message/http"));
+		this.httpResponseHeaders.put("Content-Length", Collections.singletonList(Integer.toString(raw.length)));
+		this.httpResponseBody.write(raw);
+
+		logger.info("[TRACE]\n{}", new String(raw, StandardCharsets.US_ASCII));
+		return 0;
 	}
 
 	private byte doHandleGetRequests() throws IOException {
@@ -515,7 +540,9 @@ public class ClientRequestHandler implements Runnable {
 		final String osArchitecture = System.getProperty("os.arch");
 		final String osVersion = System.getProperty("os.version");
 
-		out.write( "Server: io.github.net.rfc2616.http.server".getBytes(StandardCharsets.US_ASCII));
+		out.write( ("Server: io.github.rfc2616.http"+CRLF)
+				.getBytes(StandardCharsets.US_ASCII)
+			);
 		out.write(String.format("X-Powered-By: Java/%s (%s; %s %s; %s)%s",
 				javaVersion,
 				javaVendor,
@@ -700,6 +727,14 @@ public class ClientRequestHandler implements Runnable {
 
 	private byte sendMethodNotImplemented() throws IOException {
 		this.sendStatusLine("HTTP/1.1 501 Not Implemented");
+		this.sendDateHeader();
+		this.sendServerHeader();
+
+		return this.mountTerminateConnection();
+	}
+
+	private byte sendMethodNotAllowed() throws IOException {
+		this.sendStatusLine("HTTP/1.1 405 Method Not Allowed");
 		this.sendDateHeader();
 		this.sendServerHeader();
 
