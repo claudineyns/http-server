@@ -1,12 +1,12 @@
-package io.github.net.rfc2616.server;
+package io.github.rfc2616.server;
 
 import java.io.IOException;
 import java.net.ServerSocket;
 import java.net.Socket;
 import java.util.concurrent.CompletableFuture;
 
-import io.github.net.rfc2616.utilities.AppProperties;
-import io.github.net.rfc2616.utilities.LogService;
+import io.github.rfc2616.utilities.AppProperties;
+import io.github.rfc2616.utilities.LogService;
 
 public class Worker {
 	static final Worker worker = new Worker();

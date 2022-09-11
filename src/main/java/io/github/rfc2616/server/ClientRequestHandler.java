@@ -1,4 +1,4 @@
-package io.github.net.rfc2616.server;
+package io.github.rfc2616.server;
 
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
@@ -25,9 +25,8 @@ import java.util.zip.GZIPOutputStream;
 
 import org.apache.commons.io.IOUtils;
 
-import io.github.net.rfc2616.exceptions.CloseConnectionException;
-import io.github.net.rfc2616.utilities.AppProperties;
-import io.github.net.rfc2616.utilities.LogService;
+import io.github.rfc2616.exceptions.CloseConnectionException;
+import io.github.rfc2616.utilities.LogService;
 
 public class ClientRequestHandler implements Runnable {
 	private final LogService logger = LogService.getInstance("HTTP-SERVER");
@@ -99,13 +98,15 @@ public class ClientRequestHandler implements Runnable {
 	private static final String CRLF = "\r\n";
 	private static final byte[] CRLF_RAW = CRLF.getBytes(StandardCharsets.US_ASCII);
 
+	private boolean isUrlAsterisk = false;
+
 	private HttpMethod requestMethod = null;
 	private URL requestUrl = null;
 	private Map<String, List<String>> httpRequestHeaders = new LinkedHashMap<>();
 	private ByteArrayOutputStream httpRequestBody = new ByteArrayOutputStream();
 	private Map<String, List<String>> httpResponseHeaders = new LinkedHashMap<>();
 	private ByteArrayOutputStream httpResponseBody = new ByteArrayOutputStream();
-	
+
 	private void cleanup() {
 		this.requestMethod = null;
 		this.requestUrl = null;
@@ -174,20 +175,38 @@ public class ClientRequestHandler implements Runnable {
 	static final byte Q_NOT_FOUND = -2;
 	static final byte Q_SERVER_ERROR = 1;
 
-	private byte continueHandleHttpRequest() throws IOException {
-		this.extractBodyPayload();
-		
-		if ( HttpMethod.POST.equals(this.requestMethod) ) {
-			if( ! this.httpRequestHeaders.containsKey("content-length") 
-					&& ! this.httpRequestHeaders.containsKey("transfer-encoding") ) {
-				return this.sendLengthRequired();
+	private byte validateMessagePayloadRequirement() throws IOException {
+		final boolean bodyExpected 
+				=	HttpMethod.POST.equals(this.requestMethod) 
+				||	HttpMethod.PUT.equals(this.requestMethod);
+
+		final boolean contentLengthProvided = this.httpRequestHeaders.containsKey("content-length");
+		final boolean transferEncodingProvided = this.httpRequestHeaders.containsKey("transfer-encoding");
+
+		if (bodyExpected) {
+			if( ! contentLengthProvided && ! transferEncodingProvided ) {
+				this.sendLengthRequired();
+				return 1;
 			}
 		}
+
+		return 0;
+	}
+
+	private byte continueHandleHttpRequest() throws IOException {
+		final byte payloadRequirements = this.validateMessagePayloadRequirement();
+
+		if (payloadRequirements == 1) { return 0; }
+
+		this.extractBodyPayload();
 
 		this.httpResponseHeaders.put("Content-Length", Collections.singletonList("0"));
 
 		byte returnCode = 0;
 		switch (this.requestMethod) {
+		case OPTIONS:
+			returnCode = this.handleOptionsRequests();
+			break;
 		case GET:
 			returnCode = this.handleGetRequests();
 			break;
@@ -212,17 +231,48 @@ public class ClientRequestHandler implements Runnable {
 
 		return sendResponse();
 	}
-
+	
+	private byte handleOptionsRequests() {
+		try {
+			return doHandleOptionsRequests();
+		} catch (IOException e) {
+			return 1;
+		}
+	}
+	
 	private byte handleGetRequests() {
 		try {
 			return doHandleGetRequests();
-		} catch (Exception e) {
+		} catch (IOException e) {
 			return 1;
 		}
 	}
 
+	private byte handlePostRequests() {
+		try {
+			return doHandlePostRequests();
+		} catch (IOException e) {
+			return 1;
+		}
+	}
+	
+	private final String getPath() {
+		return this.isUrlAsterisk ? "*" : this.requestUrl.getPath();
+	}
+
+	private byte doHandleOptionsRequests() throws IOException {
+		final String path = getPath();
+
+		switch (path) {
+			case "*": return this.ping();
+			default:
+				return Q_NOT_FOUND;
+		}
+		
+	}
+
 	private byte doHandleGetRequests() throws IOException {
-		final String path = this.requestUrl.getPath();
+		final String path = getPath(); 
 
 		switch (path) {
 			case "/live":
@@ -241,8 +291,8 @@ public class ClientRequestHandler implements Runnable {
 		}
 	}
 
-	private byte handlePostRequests() throws IOException {
-		final String path = this.requestUrl.getPath();
+	private byte doHandlePostRequests() throws IOException {
+		final String path = getPath();
 
 		switch (path) {
 			case "/echo":
@@ -422,13 +472,18 @@ public class ClientRequestHandler implements Runnable {
 			httpRequestHeaders.putIfAbsent(header, new LinkedList<>());
 			httpRequestHeaders.get(header).add(value);
 		}
-		
+
 		if( this.httpRequestHeaders.containsKey("user-agent")) {
 			logger.info(this.httpRequestHeaders.get("user-agent").get(0));
 		}
 
-		this.requestUrl = new URL("http://localhost" + uri);
 		this.requestMethod = httpMethod;
+		
+		this.isUrlAsterisk = uri.equals("*");
+
+		if ( ! isUrlAsterisk) {
+			this.requestUrl = new URL("http://localhost" + uri);
+		}
 
 		return 0;
 	}
@@ -460,7 +515,7 @@ public class ClientRequestHandler implements Runnable {
 		final String osArchitecture = System.getProperty("os.arch");
 		final String osVersion = System.getProperty("os.version");
 
-		out.write(("Server: " + AppProperties.getHostName() + CRLF).getBytes(StandardCharsets.US_ASCII));
+		out.write( "Server: io.github.net.rfc2616.http.server".getBytes(StandardCharsets.US_ASCII));
 		out.write(String.format("X-Powered-By: Java/%s (%s; %s %s; %s)%s",
 				javaVersion,
 				javaVendor,
@@ -482,6 +537,13 @@ public class ClientRequestHandler implements Runnable {
 	private byte sendContentHeader(final String type, final int length) throws IOException {
 		out.write(("Content-Type: " + type + CRLF).getBytes(StandardCharsets.US_ASCII));
 		out.write(("Content-Length: " + length + CRLF).getBytes(StandardCharsets.US_ASCII));
+
+		return 0;
+	}
+
+	private byte ping() throws IOException {
+		this.httpResponseHeaders.put("Content-Length", Collections.singletonList("0"));
+		this.httpResponseBody.write(new byte[] {});
 
 		return 0;
 	}
@@ -672,7 +734,7 @@ public class ClientRequestHandler implements Runnable {
 	}
 
 	private boolean validateURI(String uri) {
-		final Pattern uriPattern = Pattern.compile("^\\/\\S*$");
+		final Pattern uriPattern = Pattern.compile("^\\/\\S*$|^\\*$");
 		final Matcher uriMatcher = uriPattern.matcher(uri);
 
 		return uriMatcher.matches();

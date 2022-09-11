@@ -1,4 +1,4 @@
-package io.github.net.rfc2616.exceptions;
+package io.github.rfc2616.exceptions;
 
 import java.io.IOException;
 
