@@ -107,6 +107,22 @@ public class TestCase {
 	}
 	
 	@Test
+	public void getTraceSuccessful() throws Exception {
+		logger.info("# getTraceSuccessful (START)");
+		
+		final StringBuilder request = new StringBuilder("");
+		request.append("TRACE / HTTP/1.1\r\n");
+		request.append("Host: localhost\r\n");
+		request.append("User-Agent: Java\r\n");
+		request.append("Connection: close\r\n");
+		request.append("\r\n");
+
+		execute(request.toString());
+
+		logger.info("# getTraceSuccessful (END)\n");
+	}
+	
+	@Test
 	public void getLivenessSuccessful() throws Exception {
 		logger.info("# getLivenessSuccessful (START)");
 		
@@ -276,8 +292,8 @@ public class TestCase {
 	}
 
 	@Test
-	public void getInvalidMethodSucessful() throws Exception {
-		logger.info("# getInvalidMethodSucessful (START)");
+	public void getNotImplementedSucessful() throws Exception {
+		logger.info("# getNotImplementedSucessful (START)");
 		
 		final StringBuilder request = new StringBuilder("");
 
@@ -287,7 +303,22 @@ public class TestCase {
 
 		execute(request.toString());
 		
-		logger.info("# getInvalidMethodSucessful (END)\n");
+		logger.info("# getNotImplementedSucessful (END)\n");
+	}
+
+	@Test
+	public void getMethodNotAllowedSucessful() throws Exception {
+		logger.info("# getMethodNotAllowedSucessful (START)");
+		
+		final StringBuilder request = new StringBuilder("");
+
+		request.append("HEAD / HTTP/1.1\r\n");
+		request.append("Connection: close\r\n");
+		request.append("\r\n");
+
+		execute(request.toString());
+		
+		logger.info("# getMethodNotAllowedSucessful (END)\n");
 	}
 	
 	@Test
