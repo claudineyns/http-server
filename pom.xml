@@ -3,7 +3,7 @@
   <modelVersion>4.0.0</modelVersion>
   <groupId>net.rfc2616</groupId>
   <artifactId>http-server</artifactId>
-  <version>0.0.1-SNAPSHOT</version>
+  <version>0.0.2</version>
 
   <name>http-server</name>
   <description>Very basic http server implementation based on RFC2616</description>
@@ -55,8 +55,8 @@
         <artifactId>maven-compiler-plugin</artifactId>
         <version>3.8.1</version>
         <configuration>
-          <source>1.8</source>
-          <target>1.8</target>
+          <source>11</source>
+          <target>11</target>
         </configuration>
       </plugin>
 

@@ -4,8 +4,10 @@ import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
+import java.net.HttpURLConnection;
 import java.net.Socket;
 import java.net.SocketTimeoutException;
+import java.net.URI;
 import java.net.URL;
 import java.nio.charset.StandardCharsets;
 import java.time.ZoneId;
@@ -18,8 +20,8 @@ import java.util.LinkedList;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import java.util.Optional;
 import java.util.UUID;
-import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import java.util.zip.GZIPOutputStream;
 
@@ -99,6 +101,7 @@ public class ClientRequestHandler implements Runnable {
 	private static final byte[] CRLF_RAW = CRLF.getBytes(StandardCharsets.US_ASCII);
 
 	private boolean isUrlAsterisk = false;
+	private boolean isProxyAttempt = false;
 
 	private HttpMethod requestMethod = null;
 	private URL requestUrl = null;
@@ -173,7 +176,9 @@ public class ClientRequestHandler implements Runnable {
 
 	static final byte Q_BAD_REQUEST = -1;
 	static final byte Q_NOT_FOUND = -2;
+	static final byte Q_SUCCESS = 0;
 	static final byte Q_SERVER_ERROR = 1;
+	static final byte Q_NOT_IMPLEMENTED = 2;
 
 	private byte validateMessagePayloadRequirement() throws IOException {
 		final boolean bodyExpected 
@@ -196,13 +201,18 @@ public class ClientRequestHandler implements Runnable {
 	private byte continueHandleHttpRequest() throws IOException {
 		final byte payloadRequirements = this.validateMessagePayloadRequirement();
 
-		if (payloadRequirements == 1) { return 0; }
+		if ( payloadRequirements == 1 ) { return 0; }
 
 		this.extractBodyPayload();
 
 		this.httpResponseHeaders.put("Content-Length", Collections.singletonList("0"));
 
 		byte returnCode = 0;
+
+		if( this.isProxyAttempt ) {
+			return this.startProxyData();
+		}
+
 		switch (this.requestMethod) {
 		case OPTIONS:
 			returnCode = this.handleOptionsRequests();
@@ -213,23 +223,26 @@ public class ClientRequestHandler implements Runnable {
 		case POST:
 			returnCode = this.handlePostRequests();
 			break;
+		case CONNECT:
+			returnCode = this.handleConnectRequests();
+			break;
 		default:
 			break;
 		}
 
-		if (returnCode == Q_BAD_REQUEST) {
+		switch(returnCode) {
+		case Q_SUCCESS:
+			return this.sendResponse();
+		case Q_NOT_IMPLEMENTED:
+			return this.sendNotImplemented();
+		case Q_BAD_REQUEST:
 			return this.sendBadRequest("Invalid Request Data");
-		}
-
-		if (returnCode == Q_NOT_FOUND) {
+		case Q_NOT_FOUND:
 			return this.sendResourceNotFound();
-		}
-
-		if (returnCode != 0) {
+		default:
 			return this.sendServerError(null);
 		}
 
-		return sendResponse();
 	}
 	
 	private byte handleOptionsRequests() {
@@ -254,6 +267,101 @@ public class ClientRequestHandler implements Runnable {
 		} catch (IOException e) {
 			return 1;
 		}
+	}
+
+	private byte handleConnectRequests() {
+		try {
+			return doHandleConnectRequests();
+		} catch (IOException e) {
+			return 1;
+		}
+	}
+
+	private final byte startProxyData() throws IOException {
+		final int responseCode = this.fetchProxyData();
+
+		return terminateProxyRequest(responseCode);
+	}
+
+	private final int fetchProxyData() throws IOException {
+		final HttpURLConnection http = (HttpURLConnection) this.requestUrl.openConnection();
+
+		http.setRequestMethod(this.requestMethod.name());
+		http.setInstanceFollowRedirects(false);
+		http.setConnectTimeout(5000);
+		http.setReadTimeout(5000);
+
+		http.setDoInput(true);
+
+		if( this.httpRequestBody.size() > 0 ) {
+			http.setDoOutput(interrupt);
+
+			Optional.ofNullable(this.httpRequestHeaders.get("content-type"))
+			.ifPresent(contentType -> {
+				http.setRequestProperty("Content-Type", contentType.get(0));
+			});
+
+			http.setRequestProperty("Content-Length", String.valueOf(this.httpRequestBody.size()));
+
+			final OutputStream out = http.getOutputStream();
+			out.write(this.httpRequestBody.toByteArray());
+			out.flush();
+		}
+
+		InputStream in = null;
+
+		int responseCode = 500;
+
+		try {
+			responseCode = http.getResponseCode();
+			in = http.getInputStream();	
+		} catch(IOException failure) {
+			in = http.getErrorStream();
+		}
+
+		final ByteArrayOutputStream proxyResponse = new ByteArrayOutputStream();
+
+		Optional.ofNullable(in).ifPresent(inStream -> {
+			try {
+				IOUtils.copy(inStream, proxyResponse);
+			} catch(IOException failure) {}
+		});
+
+		http.getHeaderFields().entrySet()
+		.stream()
+		.filter(entry -> entry.getKey() != null)
+		.filter(entry -> 
+			Pattern
+				.compile("content-type")
+				.matcher(entry.getKey().toLowerCase())
+				.find()
+		)
+		.forEach(entry -> {
+			this.httpResponseHeaders.put(entry.getKey(), entry.getValue());
+		})
+		;
+
+		this.httpResponseHeaders.put(
+			"Content-Length",
+			Collections.singletonList(Integer.toString(proxyResponse.size()))
+		);
+		
+		this.httpResponseBody.write(proxyResponse.toByteArray());
+
+		return responseCode;
+	}
+
+	private byte terminateProxyRequest(int responseCode) throws IOException {
+		final HttpStatus status = HttpStatus.valueOf(responseCode);
+		this.sendStatusLine(String.format("HTTP/1.1 %d %s", status.getCode(), status.getDescription()));
+
+		this.sendDateHeader();
+		this.sendServerHeader();
+		this.sendETagHeader();
+		this.sendCustomHeaders();
+		this.mountTerminateConnection();
+
+		return this.mountCustomBody();
 	}
 	
 	private final String getPath() {
@@ -300,6 +408,10 @@ public class ClientRequestHandler implements Runnable {
 			default:
 				return Q_NOT_FOUND;
 		}
+	}
+
+	private byte doHandleConnectRequests() throws IOException {
+		return Q_BAD_REQUEST;
 	}
 
 	private byte extractBodyPayload() throws IOException {
@@ -459,7 +571,8 @@ public class ClientRequestHandler implements Runnable {
 		}
 
 		final String uri = methodContent[1];
-		if (!validateURI(uri)) {
+
+		if ( ! validateURI(uri) ) {
 			this.interrupt = true;
 			return sendBadRequest("Invalid HTTP URI");
 		}
@@ -474,15 +587,15 @@ public class ClientRequestHandler implements Runnable {
 		}
 
 		if( this.httpRequestHeaders.containsKey("user-agent")) {
-			logger.info(this.httpRequestHeaders.get("user-agent").get(0));
+			logger.info("User-Agent: {}", this.httpRequestHeaders.get("user-agent").get(0));
 		}
 
 		this.requestMethod = httpMethod;
 		
 		this.isUrlAsterisk = uri.equals("*");
 
-		if ( ! isUrlAsterisk) {
-			this.requestUrl = new URL("http://localhost" + uri);
+		if ( ! isUrlAsterisk ) {				
+			this.requestUrl = this.isProxyAttempt ? URI.create(uri).toURL() : new URL("http://localhost" + uri);
 		}
 
 		return 0;
@@ -515,7 +628,7 @@ public class ClientRequestHandler implements Runnable {
 		final String osArchitecture = System.getProperty("os.arch");
 		final String osVersion = System.getProperty("os.version");
 
-		out.write( "Server: io.github.net.rfc2616.http.server".getBytes(StandardCharsets.US_ASCII));
+		out.write( ("Server: io.github.net.rfc2616.http.server" + CRLF).getBytes(StandardCharsets.US_ASCII));
 		out.write(String.format("X-Powered-By: Java/%s (%s; %s %s; %s)%s",
 				javaVersion,
 				javaVendor,
@@ -624,6 +737,7 @@ public class ClientRequestHandler implements Runnable {
 	}
 
 	private byte sendBasicBody() throws IOException {
+		
 		final String html = "<!DOCTYPE html>\n<html>\n<head>\n<meta charset=\"UTF-8\">\n"
 				+ "<title>Basic HTTP Server</title>\n</head>\n<body>\nIt works</body>\n"
 				+ "</html>\n";
@@ -654,6 +768,16 @@ public class ClientRequestHandler implements Runnable {
 
 	private byte mountTerminateConnection() throws IOException {
 		out.write(CRLF_RAW);
+
+		return 0;
+	}
+
+	private byte sendNotImplemented() throws IOException {
+		this.sendStatusLine("HTTP/1.1 501 Not Implemented");
+		this.sendDateHeader();
+		this.sendServerHeader();
+		this.mountTerminateConnection();
+		out.write(new byte[]{});
 
 		return 0;
 	}
@@ -726,6 +850,7 @@ public class ClientRequestHandler implements Runnable {
 		final byte[] raw = cause.getBytes(StandardCharsets.US_ASCII);
 
 		this.sendContentHeader("text/plain", raw.length);
+
 		this.mountTerminateConnection();
 
 		out.write(raw);
@@ -733,11 +858,17 @@ public class ClientRequestHandler implements Runnable {
 		return 0;
 	}
 
-	private boolean validateURI(String uri) {
-		final Pattern uriPattern = Pattern.compile("^\\/\\S*$|^\\*$");
-		final Matcher uriMatcher = uriPattern.matcher(uri);
+	final Pattern pathUriPattern = Pattern.compile("^\\/\\S*$|^\\*$");
+	final Pattern fullUriPattern = Pattern.compile("^https?:\\S*$");
 
-		return uriMatcher.matches();
+	private boolean validateURI(String uri) {
+		this.isProxyAttempt = fullUriPattern.matcher(uri).matches();
+
+		if( this.isProxyAttempt ) {
+			return true;
+		}
+
+		return pathUriPattern.matcher(uri).matches();
 	}
 
 	private byte sendResponse() throws IOException {

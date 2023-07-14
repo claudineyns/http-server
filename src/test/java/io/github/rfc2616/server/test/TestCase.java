@@ -289,6 +289,20 @@ public class TestCase {
 		
 		logger.info("# getInvalidMethodSucessful (END)\n");
 	}
+	
+	@Test
+	public void proxySuccessfull() throws Exception {
+		logger.info("# getRootSuccessfull (START)");
+		
+		final StringBuilder request = new StringBuilder("");
+		request.append("GET http://example.com/ HTTP/1.1\r\n");
+		request.append("Connection: close\r\n");
+		request.append("\r\n");
+
+		execute(request.toString());
+		
+		logger.info("# getRootSuccessfull (END)\n");
+	}
 
 	@AfterAll
 	public void terminate() throws Exception {
