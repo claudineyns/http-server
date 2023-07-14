@@ -291,6 +291,11 @@ public class ClientRequestHandler implements Runnable {
 		}
 	}
 
+	/*
+	 * TODO: Full implementation of proxy should consider this page:
+	 * 
+	 * https://developer.mozilla.org/en-US/docs/Web/HTTP/Proxy_servers_and_tunneling
+	 */
 	private final byte startProxyData() throws IOException {
 		final int responseCode = this.fetchProxyData();
 
